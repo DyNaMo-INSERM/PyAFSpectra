@@ -1,0 +1,11 @@
+chime==0.7.0
+matplotlib==3.10.0
+npTDMS==1.7.1
+numpy==2.2.1
+pandas==2.2.3
+pygame==2.6.0
+PyQt5==5.15.11
+PyQt5_sip==12.11.0
+pyqtgraph==0.13.7
+scipy==1.14.1
+seaborn==0.13.2

@@ -6,9 +6,13 @@ Created on Fri May  3 18:01:29 2024
 @author: yogehs
 """
 
-#TODO troubleshoot D_G find
-#TODO save THE RMS value before force
 
+from scipy import signal
+
+from scipy.optimize import curve_fit
+from scipy.ndimage.filters import gaussian_filter1d, uniform_filter1d
+
+from scipy.stats import norm
 import numpy as np
 import pandas as pd
 import datetime
@@ -28,9 +32,10 @@ warnings.filterwarnings("ignore")
 from nptdms import TdmsFile
 
 from collections import defaultdict
-
+ 
 from utils import *
-#%%important stuff 
+
+#some important parameters
 bool_out_xyz = False;    CleanOutlier_med =False ;
 
 SaveGraph =True;CloseAfterSave = True;
@@ -38,7 +43,9 @@ save_alpha_fit = True
 
 first_z  =True ; saveZ = False ;power_spec_bool = True
 out_Z =False
-# Get key mappings from Qt namespace
+
+
+# To map the keyboard keys
 qt_keys = (
     (getattr(QtCore.Qt, attr), attr[4:])
     for attr in dir(QtCore.Qt)
@@ -52,7 +59,6 @@ class KeyPressWindow(pg.GraphicsLayoutWidget):
         self.scene().keyPressEvent(ev)
         self.sigKeyPress.emit(ev)
     
-        #print(ev.key(),keys_mapping[ev.key()])
 def DENn(f,fc,fs,n): return 1 + (np.abs(f+n*fs)/fc)**2  
 def SINCn(f,te,fs,n): return np.sinc(te*np.abs(f+n*fs))**2 
  
@@ -66,7 +72,7 @@ class Lumicks_sucks():
         super().__init__()
         self.joysticks = {}
 
-        self.app = pg.mkQApp("Lumicks analysis sucks") 
+        self.app = pg.mkQApp("PyAFSpectra") 
         self.mw = QtWidgets.QMainWindow()
         self.log_trouble_sess = pd.DataFrame(columns=log_afs.columns)
         self.save_path = save_path
@@ -95,6 +101,7 @@ class Lumicks_sucks():
         if anal_label is not None:
             self.save_anal_label = f"{self.save_folder}/{anal_label}"
             os.makedirs(self.save_anal_label,exist_ok=True)
+
         
     def init_trace_params(self):
         #trace params
@@ -136,15 +143,11 @@ class Lumicks_sucks():
         self.D_t = 0
         self.pow_rate_rup_ramp = 0
         self.avg_pow_OTR = 0
-        
-    def load_gui(self):
+             
+    def launch_gui(self):
         self.create_app()
-        self.load_bead_gui()
-    def load_gui_bas(self):
-        self.create_app()
-        self.load_bead_gui_bas()
-        
-    def load_bead_gui(self):
+        self.init_bead()
+    def init_bead(self):
         self.trace_plt.setYRange(-400,400)
         self.trace_plt.clear();self.trace_plt.addItem(self.rup_pos)
         self.trace_plt.addItem(self.otr_win)
@@ -161,25 +164,6 @@ class Lumicks_sucks():
         self.trace_plt.plot(self.T_s[:],self.L_t[:])
         self.rup_pos.setValue(self.rupture_time)
         self.otr_win.setRegion([self.T_s[self.OTR_A],self.T_s[self.OTR_B]])
-    def load_bead_gui_bas(self):
-        self.trace_plt.setYRange(-400,400)
-        self.trace_plt.clear();self.trace_plt.addItem(self.rup_pos)
-        self.trace_plt.addItem(self.otr_win)
-        if 'bool_troubleshoot' in self.log_afs_df:
-            self.load_bead_post_gui_bas()
-        else:
-            self.load_bead_bas()
-        [tx,ty] = self.rup_ramp_loc
-
-        self.trace_plt.setYRange(-400,400)
-        self.trace_plt.enableAutoRange(axis='x')
-        self.trace_plt.setAutoVisible(x=True)
-        self.file_label_btn.setText(self.file_label)
-        
-        self.trace_plt.plot(self.T_s,self.xx)
-        self.rup_pos.setValue(self.rupture_time)
-        self.otr_win.setRegion([self.T_s[self.OTR_A],self.T_s[self.OTR_B]])
-
 
     def load_bead(self):
         self.init_trace_params()
@@ -190,57 +174,19 @@ class Lumicks_sucks():
         self.ori_path = self.log_afs_df['File path'][self.i_file]
         self.tdms_file_name = self.log_afs_df['TDMS file name '][self.i_file]
 
-        self.rupture_pos = int(self.log_afs_df['rupture_pos_pt_idx'][self.i_file])
-        self.rupture_time = float(self.log_afs_df['rupture_pos_s'][self.i_file])
-        
-        self.fs = float(self.log_afs_df['frame_rate_hz'][self.i_file])
-        self.fmax_Hz=self.fs ;self.f_c_threshold_global = self.fs/6 ;self.n_sec_otf = self.N_psd_build/self.fs 
-        self.fmin_Hz = self.fs/self.N_psd_build
-        
-        self.te = float(self.log_afs_df['exposure_time_s'][self.i_file])
-        
         
         self.file_label = str(self.i_file)+"_"+self.tdms_file_name
         #print(self.log_afs_df['radius_nm'][self.i_file])
         if self.log_afs_df['radius_nm'][self.i_file].isdigit():
             self.bead_radius = int(self.log_afs_df['radius_nm'][self.i_file])
         else:
+            #this was the default radius in our case 
             self.bead_radius = 3101/2.0
         self.prep_trace()
-        [tx,ty] = self.rup_ramp_loc
 
+        self.rupture_pos = len(self.xx)-1
+        self.OTR_A= 0;self.OTR_B= self.N_psd_build
 
-        self.OTR_A= tx
-        self.OTR_B= tx +self.N_psd_build
-
-
-    def load_bead_bas(self):
-        self.init_trace_params()
-        self.is_bass_trace = True
-
-        print("load the data")
-        
-        self.ori_path = self.log_afs_df['File path'][self.i_file]
-        self.tdms_file_name = self.log_afs_df['TDMS file name '][self.i_file]
-
-        self.rupture_pos = int(self.log_afs_df['rupture_pos_pt_idx'][self.i_file])
-        self.rupture_time = float(self.log_afs_df['rupture_pos_s'][self.i_file])
-        
-        self.fs = float(self.log_afs_df['frame_rate_hz'][self.i_file])
-        self.fmax_Hz=self.fs ;self.f_c_threshold_global = self.fs/6 ;self.n_sec_otf = self.N_psd_build/self.fs 
-        self.fmin_Hz = self.fs/self.N_psd_build
-        
-        self.te = float(self.log_afs_df['exposure_time_s'][self.i_file])
-        
-        
-        self.file_label = str(self.i_file)+"_"+self.tdms_file_name
-        #print(self.log_afs_df['radius_nm'][self.i_file])
-
-        self.bead_radius = 3101/2.0
-        self.prep_trace_bass()
-
-                        
-        
     def load_bead_post_gui(self):
         self.init_trace_params()
         self.is_bass_trace = False
@@ -285,27 +231,7 @@ class Lumicks_sucks():
                 self.D_global_arr = [True,dg_x,dg_y]
 
             self.prep_trace_post_gui()
-    def find_temp(self):
-        
-        tdms_file = TdmsFile.open(f"{self.ori_path}/{self.tdms_file_name}.tdms") 
-        tdms_groups = tdms_file.groups()   
-        tdms_track = tdms_groups[0]; tdms_temp = tdms_groups[1]; tdms_event = tdms_groups[2]
-        
-        temperature = tdms_temp['Actual Temp'][:]
 
-        Temperature_C = np.nanmean(temperature); #global kBT_pN_nm
-        
-        temp_kBT_pN_nm= 1.38e-23*(Temperature_C+273)*1.e12*1.e9
-        return Temperature_C
-    def key_pressed_YS(self,ev):
-        if keys_mapping[ev.key()]=='D':
-            self.btn_next_file()
-        elif keys_mapping[ev.key()]=='A':
-            self.btn_prev_file()
-        elif keys_mapping[ev.key()]=='S':
-            self.save_sess_log()
-        elif keys_mapping[ev.key()]=='Space':
-            self.btn_skip_file()    
     def prep_trace_post_gui(self):
         CleanOutlier_med =False 
         did_it_unbind =  ~np.isnan(self.rupture_pos)
@@ -332,6 +258,8 @@ class Lumicks_sucks():
         
       
         T0, self.fs = timet(tdms_track, False)
+        self.fmax_Hz=self.fs ;self.f_c_threshold_global = self.fs/6 ;self.n_sec_otf = self.N_psd_build/self.fs 
+        #self.fmin_Hz = self.fs/self.N_psd_build
         
         
         self.te = find_te_tdms_index(fname,self.ori_path)
@@ -600,6 +528,8 @@ class Lumicks_sucks():
         
       
         T0, self.fs = timet(tdms_track, False)
+        self.fmax_Hz=self.fs ;self.f_c_threshold_global = self.fs/6 ;self.n_sec_otf = self.N_psd_build/self.fs 
+        self.fmin_Hz = self.fs/self.N_psd_build
         
         
         self.te = find_te_tdms_index(fname,self.ori_path)
@@ -779,7 +709,8 @@ class Lumicks_sucks():
         #step 8:final anchor pont sub for Z
         z_anchor_pt = Z01[:non_0_force[0]].min()
         zz = Z01-Z01[:non_0_force[0]].min()
-     
+        self.non_zero_pos = non_0_force[0]
+
         #step 9 : determining the rupture force through the Z trace
         #need not do it as this file as it already.
         
@@ -787,93 +718,26 @@ class Lumicks_sucks():
         anchor_pt_arr = [(np.mean(xx[:non_0_force[0]]),np.mean(yy[:non_0_force[0]]))]
         for a in anchor_pt_arr :
             xx -= a[0];yy-=a[1]
-            if did_it_unbind : 
-                non_0_force = pre_rup_func(non_0_force,self.rupture_pos-int(self.fs*self.otf_end_T_thresh))
-                zero_force_pos = pre_rup_func(zero_force_pos,self.rupture_pos)
-                self.non_zero_pos = non_0_force[0]
-                if self.rupture_pos == len(zz)-1:
-                    zz = zz - zz[non_0_force[0]].min()
-                else:
-                    zz = zz - zz[zero_force_pos].min()
-                    
+           
             #accounting for the height correction  
             zz = zz*self.ht_correction_factor
 
                 
-            #print(zero_force_pos)
-            sigma_x = np.quantile(X_bf- np.mean(X_bf),0.975) - np.quantile(X_bf- np.mean(X_bf),0.025)
-            sigma_y = np.quantile(Y_bf- np.mean(Y_bf),0.975) - np.quantile(Y_bf- np.mean(Y_bf),0.025)
-
-            L_t_planar = np.sqrt((xx[zero_force_pos])**2 + (yy[zero_force_pos] )**2)
+            
             self.rms_X_Y = np.sqrt(np.average((xx[:self.non_zero_pos])**2 + (yy[:self.non_zero_pos] )**2))
-            max_L_t_plane = np.quantile(L_t_planar,0.95)
 
-            L_t_bforce = (np.sqrt((xx[zero_force_pos] )**2 + (yy[zero_force_pos] )**2+
-                                 (zz[zero_force_pos] + self.bead_radius )**2 ) - self.bead_radius)
-
-            L_t_aforce = (np.sqrt((xx[non_0_force])**2 + (yy[non_0_force])**2+
-                                 (zz[non_0_force] + self.bead_radius )**2 ) - self.bead_radius)
+           
             L_t = (np.sqrt((xx )**2 + (yy )**2+
                                  (zz + self.bead_radius )**2 ) - self.bead_radius)
             
             
             
-            L_T_bforce_avg = L_t_bforce.mean();L_T_aforce_avg = L_t_aforce.mean()
-            AnchorCov=np.cov(xx[:non_0_force[0]],yy[:non_0_force[0]])
-            w, v = np.linalg.eig(AnchorCov); self.symmetry_factor = np.sqrt(np.amax(w)/np.amin(w))
-
-            
-            max_L_t_bforce = np.quantile(L_t_bforce,0.95);max_L_t_aforce = np.quantile(L_t_aforce,0.95)
-            min_L_t_bforce_qt = np.quantile(L_t_bforce,0.05);min_L_t_aforce_qt = np.quantile(L_t_aforce,0.05)
-            min_L_t_bforce = L_t_bforce.min();min_L_t_aforce =L_t_aforce.min()
-            min_L_t_aforce_rup_ramp,qt_L_t_aforce_rup_ramp = np.nan ,np.nan
-
-            Z_rup_avg = np.nan
                 
-        for j in range(len(self.ramp_loc)):
-            (tx,ty) = self.ramp_loc[j]
-            if self.rupture_pos >tx and self.rupture_pos<ty :
-                self.rup_ramp_loc[0] = tx;self.rup_ramp_loc[1] = ty 
-                #self.pow_rate_rup_ramp=(P0[self.rupture_pos] - P0[tx])/(T_s[self.rupture_pos]-T_s[tx])
 
         self.xx = xx;self.yy = yy
         self.zz = zz;self.T_s = T_s
         self.L_t = L_t;self.P0 = P0
-    def prep_trace_bass(self):
-        CleanOutlier_med =False 
-        did_it_unbind =  ~np.isnan(self.rupture_pos)
 
-        b, bref = bead_extract_from_df(self.log_afs_df,self.i_file)
-        b = self.log_afs_df['B'][self.i_file]
-        self.bref = self.log_afs_df['B_ref'][self.i_file]
-        Temperature_C = self.log_afs_df['temperature_C'][self.i_file]
-        self.file_label+= "_"+ str(b)
-        df_data_prep = pd.read_csv(self.ori_path)
-        self.kBT_pN_nm= 1.38e-23*(Temperature_C+273)*1.e12*1.e9
-    
-        
-        self.P0 = df_data_prep['power_percent'].to_numpy()
-
-        xx =  df_data_prep['prep_X_nm'].to_numpy();yy = df_data_prep['prep_Y_nm'].to_numpy()
-        self.xx =xx
-        self.yy = yy
-        self.zz =  self.log_afs_df['z_avg_nm'][self.i_file]*np.ones(len(self.xx))
-        
-        self.T_s =df_data_prep['time_s'].to_numpy()
-        
-        L_t = (np.sqrt((self.xx )**2 + (self.xx )**2+
-                             (self.zz + self.bead_radius )**2 ) - self.bead_radius)
-        
-        self.L_t = L_t
-        non_0_force = np.argwhere(self.P0).squeeze()
-
-        self.non_zero_pos = non_0_force[0]
-        self.rms_X_Y = np.sqrt(np.average((xx[:self.non_zero_pos])**2 + (yy[:self.non_zero_pos] )**2))
-        self.rup_ramp_loc = [ non_0_force[0],len(self.xx)+-1]
-
-
-        self.OTR_A= self.rup_ramp_loc[0]
-        self.OTR_B= self.rup_ramp_loc[0] +self.N_psd_build
 
     def create_app(self):
         
@@ -967,7 +831,6 @@ class Lumicks_sucks():
         proxy.setWidget(btn)
     
         return(proxy)
-        #win.addItem(proxy)
         
     
     def btn_skip_file(self):
@@ -1013,7 +876,6 @@ class Lumicks_sucks():
 
     def update_OTR_WIN(self,otr_b):
         self.OTR_B = int(otr_b*self.fs); self.OTR_A =  int(self.fs*(otr_b-self.n_sec_otf))
-        #return([self.OTR_A,OTR_B])
     
     def round_avg_win(self,arr):
         return np.round(np.average(arr[self.OTR_A:self.OTR_B]),3)
@@ -1131,7 +993,6 @@ class Lumicks_sucks():
 
         if self.bool_D_G:
             if self.D_G_found:
-                print("FUCKKKK yeassss")
                 for i in range(2):
                     trace = trace_arr[i]
                     temp_label = "glbalfit"
@@ -1175,6 +1036,10 @@ class Lumicks_sucks():
         self.rupture_time = self.rup_pos.value()
         self.rupture_pos = int(self.rupture_time*self.fs)
         self.P_rup = self.P0[ self.rupture_pos]
+        for j in range(len(self.ramp_loc)):
+            (tx,ty) = self.ramp_loc[j]
+            if self.rupture_pos >tx and self.rupture_pos<ty :
+                self.rup_ramp_loc[0] = tx;self.rup_ramp_loc[1] = ty 
 
         self.L_t_rup = np.round(np.nanmean(self.L_t[self.rupture_pos-self.N_psd_build :self.rupture_pos ]),3)
         self.update_OTR_WIN(self.rupture_time)
@@ -1184,7 +1049,6 @@ class Lumicks_sucks():
         self.rup_pos.setPen((0,0,200))
         self.rup_pos.label.setColor((200,0,0))
         self.rup_pos.movable = True
-    #def save_log_data(self):
     def save_sess_log_post_clean(self,do_you_want_an_excel =False):
         N_trouble_sess = len(self.log_trouble_sess)
         #print(N_trouble_sess,self.log_afs_df.iloc[self.i_file])
@@ -1313,9 +1177,8 @@ class Lumicks_sucks():
     
             S+= (SINCn(f,self.te,self.fs,n)/DENn(f,fc,self.fs,n)) 
         return PREF*S   # with correction 
-        #return PREF/DENn(f,fc,fs,0)  # no correction
     
-    def FitSpectrumGenDaldrop(self,f, *p): # k = p[0]; D = p[1] 
+    def FitSpectrumGenDaldrop(self,f, *p):  
         return self.FitSpectrumGenNew(f, p[0], p[1])
     def FitSpectrum_plot_global(self,x,*p): 
         return p[1]/(2*np.pi**2)/( x**2 + (p[0]*p[1]/(2*np.pi*self.kBT_pN_nm))**2 )   # Sitter 2015
@@ -1326,7 +1189,6 @@ class Lumicks_sucks():
         axis_arr = ['X','Y'];color_arr= [(255,0,0),(0,0,255)]
         friction0 = 6*np.pi*1.e-9*self.bead_radius       # units pN.s/nm
         
-        print("fuck you ",p1Zo,self.bead_radius)
         friction = friction0 / ( 1 - (9/16)*(self.bead_radius/(p1Zo+self.bead_radius)) + (1/8)*(self.bead_radius/(p1Zo+self.bead_radius))**3 )
 
         f, Pxx_spec = signal.periodogram(xx, self.fs, scaling='density') 
@@ -1422,7 +1284,6 @@ class Lumicks_sucks():
 
 
         def FitSpectrum_global(x, k1,D_g=D_global): 
-            print(D_g)
             return D_g/(2*np.pi**2)/( x**2 + (k1*D_g/(2*np.pi*self.kBT_pN_nm))**2 )   # Sitter 2015
             
         D_Dtheo = D_global*friction/self.kBT_pN_nm ; dl = 0
@@ -1548,7 +1409,6 @@ class Lumicks_sucks():
         else :
             self.D_global_arr = [False , 0,0]
             print("NOT FOUNDGlobal D ")
-        #print(self.D_global_arr)   
     def controller_cont(self):
     
         for event in pyg.event.get():
@@ -1576,3 +1436,32 @@ class Lumicks_sucks():
                 self.move_otr()
             if controller.get_axis(0): #Y
                 self.move_rup_pos()
+
+    def find_temp(self):
+        tdms_file = TdmsFile.read_metadata(f"{self.ori_path}/{self.tdms_file_name}.tdms")  
+        for group in tdms_file.groups():
+            te = float(group.properties['Camera.Exposure time (ms)'])
+            break
+        self.te = te* 0.001 # to transform the data into s
+        
+        tdms_file = TdmsFile.open(f"{self.ori_path}/{self.tdms_file_name}.tdms") 
+        tdms_groups = tdms_file.groups()   
+        tdms_temp = tdms_groups[1]
+        
+        temperature = tdms_temp['Actual Temp'][:]
+
+        Temperature_C = np.nanmean(temperature); #global kBT_pN_nm
+        
+        temp_kBT_pN_nm= 1.38e-23*(Temperature_C+273)*1.e12*1.e9
+        return Temperature_C
+    def key_pressed_YS(self,ev):
+        
+      
+        if keys_mapping[ev.key()]=='D':
+            self.btn_next_file()
+        elif keys_mapping[ev.key()]=='A':
+            self.btn_prev_file()
+        elif keys_mapping[ev.key()]=='S':
+            self.save_sess_log()
+        elif keys_mapping[ev.key()]=='Space':
+            self.btn_skip_file()    

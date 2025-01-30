@@ -40,7 +40,7 @@ python main.py
 ```
 
 ### Navigating the GUI 
-the GUI has keyboard functionality
+This GUI has keyboard functionality, to have a more user friendly approch to analyse the data.
 - Define the rupture time of the trace by manually dragging T_rup and double clicking to record it.
 - Dragable OTR fitting window across the trace to find the right window to fit the PSD.(ideally close to T_rup)
 - Press S to save the results locally in the computer at any point of analysis.

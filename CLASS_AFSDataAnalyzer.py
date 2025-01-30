@@ -6,7 +6,9 @@ Created on Fri May  3 18:01:29 2024
 @author: yogehs
 """
 
+import matplotlib.pyplot as plt
 
+from decimal import Decimal
 from scipy import signal
 
 from scipy.optimize import curve_fit
@@ -17,6 +19,7 @@ import numpy as np
 import pandas as pd
 import datetime
 import pygame as pyg
+import chime 
 
 import pyqtgraph as pg
 pg.setConfigOption('background', '#f0f0f0')
@@ -34,6 +37,7 @@ from nptdms import TdmsFile
 from collections import defaultdict
  
 from utils import *
+from pprint import pprint
 
 #some important parameters
 bool_out_xyz = False;    CleanOutlier_med =False ;
@@ -63,12 +67,24 @@ def DENn(f,fc,fs,n): return 1 + (np.abs(f+n*fs)/fc)**2
 def SINCn(f,te,fs,n): return np.sinc(te*np.abs(f+n*fs))**2 
  
 
-class Lumicks_sucks():
-    """ trouble shoot AFS data 
-    takes index and log as inputs 
-    has prep_trace as a method 
+class AFSDataAnalyzer():
+    """ 
+    Troubleshoot AFS data.
+    
+    Takes index and log as inputs and has methods to prepare and analyze traces.
     """
-    def __init__(self,log_afs,save_path,start_index=0,N_psd_build =1200,gui_bool=True,anal_label = None):
+    def __init__(self, log_afs, save_path, start_index=0, N_psd_build=1200, gui_bool=True, anal_label=None):
+        """
+        Initialize the AFSDataAnalyzer class.
+
+        Parameters:
+        log_afs (DataFrame): Log of AFS data.
+        save_path (str): Path to save the analysis results.
+        start_index (int): Starting index for analysis.
+        N_psd_build (int): Number of PSD builds.
+        gui_bool (bool): Flag to enable/disable GUI.
+        anal_label (str): Label for analysis.
+        """
         super().__init__()
         self.joysticks = {}
 
@@ -104,6 +120,9 @@ class Lumicks_sucks():
 
         
     def init_trace_params(self):
+        """
+        Initialize trace parameters.
+        """
         #trace params
         self.file_label = 'test'
         self.kBT_pN_nm = 0
@@ -145,9 +164,15 @@ class Lumicks_sucks():
         self.avg_pow_OTR = 0
              
     def launch_gui(self):
+        """
+        Launch the GUI for the application.
+        """
         self.create_app()
         self.init_bead()
     def init_bead(self):
+        """
+        Initialize bead parameters and load bead data.
+        """
         self.trace_plt.setYRange(-400,400)
         self.trace_plt.clear();self.trace_plt.addItem(self.rup_pos)
         self.trace_plt.addItem(self.otr_win)
@@ -166,6 +191,9 @@ class Lumicks_sucks():
         self.otr_win.setRegion([self.T_s[self.OTR_A],self.T_s[self.OTR_B]])
 
     def load_bead(self):
+        """
+        Load bead data and prepare trace.
+        """
         self.init_trace_params()
         self.is_bass_trace = False
 
@@ -188,6 +216,9 @@ class Lumicks_sucks():
         self.OTR_A= 0;self.OTR_B= self.N_psd_build
 
     def load_bead_post_gui(self):
+        """
+        Load bead data after GUI initialization.
+        """
         self.init_trace_params()
         self.is_bass_trace = False
 
@@ -233,6 +264,9 @@ class Lumicks_sucks():
             self.prep_trace_post_gui()
 
     def prep_trace_post_gui(self):
+        """
+        Prepare trace data after GUI initialization.
+        """
         CleanOutlier_med =False 
         did_it_unbind =  ~np.isnan(self.rupture_pos)
 
@@ -331,7 +365,7 @@ class Lumicks_sucks():
         #    m0 = np.median(X0[~i0]);  X0[i0] = m0*(1+.01*np.random.rand(len(X0[i0]))); X0[ (X0>(1+mm)*m0) | (X0<(1-mm)*m0) ] = m0
             m0 = np.median(MinLUT0[~i0]);  MinLUT0[i0] = m0 ; MinLUT0[ (MinLUT0>(1+mm)*m0) | (MinLUT0<(1-mm)*m0) ] = m0
             m0 = np.median(SSIM0[~i0]);  SSIM0[i0] = m0 ; SSIM0[ (SSIM0>(1+mm)*m0) | (SSIM0<(1-mm)*m0) ] = m0
-        
+
         Z0[:non_0_force[0]],count = qt_anchor_Z(Z0[:non_0_force[0]],0.02)       
         #this is to replace all values of the Z_bf dist using the 2endth quantile
 
@@ -497,6 +531,9 @@ class Lumicks_sucks():
 
 
     def prep_trace(self):
+        """
+        Prepare trace data.
+        """
         CleanOutlier_med =False 
         did_it_unbind =  ~np.isnan(self.rupture_pos)
 
@@ -740,7 +777,9 @@ class Lumicks_sucks():
 
 
     def create_app(self):
-        
+        """
+        Create the GUI application.
+        """
         #initial setup 
         self.mw.resize(1000,800)
         #self.view = pg.GraphicsLayoutWidget()  ## GraphicsView with GraphicsLayout inserted by default
@@ -816,17 +855,36 @@ class Lumicks_sucks():
 
         self.otr_win.sigRegionChanged.connect(self.onButtonClicked_PSD_plt_b)
         
-    def move_rup_pos(self,ax,V_x=1):
+    def move_rup_pos(self, ax, V_x=1):
+        """
+        Move the rupture position.
+
+        Parameters:
+        ax (int): Axis value.
+        V_x (int): Value to move the rupture position.
+        """
         cur_rup_pos = self.rup_pos.value()
         new_pos  = cur_rup_pos +ax *V_x
         self.rup_pos.setPos(new_pos)
-    def move_otr(self,ax,V_x=0.1):
+    def move_otr(self, ax, V_x=0.1):
+        """
+        Move the OTR window.
 
+        Parameters:
+        ax (int): Axis value.
+        V_x (float): Value to move the OTR window.
+        """
         cur_rup_pos = self.otr_win.getRegion()
         new_pos  = cur_rup_pos[0] +ax *V_x
         self.otr_win.setRegion([new_pos,new_pos+self.n_sec_otf])
 
-    def add_button(self,btn):
+    def add_button(self, btn):
+        """
+        Add a button to the GUI.
+
+        Parameters:
+        btn (QPushButton): Button to add.
+        """
         proxy = QtWidgets.QGraphicsProxyWidget()
         proxy.setWidget(btn)
     
@@ -834,6 +892,9 @@ class Lumicks_sucks():
         
     
     def btn_skip_file(self):
+        """
+        Skip the current file and move to the next.
+        """
         chime.info()
         self.i_file +=1
 
@@ -847,6 +908,9 @@ class Lumicks_sucks():
                 self.load_bead_gui()        
     
     def btn_next_file(self):
+        """
+        Move to the next file.
+        """
         self.save_sess_log()
 
         self.i_file +=1
@@ -860,6 +924,9 @@ class Lumicks_sucks():
             else:
                 self.load_bead_gui()               
     def btn_prev_file(self):
+        """
+        Move to the previous file.
+        """
         self.i_file -=1
         if self.i_file<0:
             self.file_label_btn.setText("Index 0, no more file post")
@@ -871,15 +938,36 @@ class Lumicks_sucks():
             else:
                 self.load_bead_gui()               
     def pop_sess_log(self):
+        """
+        Pop the session log.
+        """
         self.log_trouble_sess = self.log_trouble_sess.loc[:len(self.log_trouble_sess)-2,:]
         self.log_trouble_sess.to_excel(self.save_path,sheet_name='troubleshooted')
 
-    def update_OTR_WIN(self,otr_b):
+    def update_OTR_WIN(self, otr_b):
+        """
+        Update the OTR window.
+
+        Parameters:
+        otr_b (float): OTR window value.
+        """
         self.OTR_B = int(otr_b*self.fs); self.OTR_A =  int(self.fs*(otr_b-self.n_sec_otf))
     
-    def round_avg_win(self,arr):
+    def round_avg_win(self, arr):
+        """
+        Round the average window.
+
+        Parameters:
+        arr (array): Array of values.
+        """
         return np.round(np.average(arr[self.OTR_A:self.OTR_B]),3)
-    def rms_over_wins(self,win_size_s =2):
+    def rms_over_wins(self, win_size_s=2):
+        """
+        Calculate RMS over windows.
+
+        Parameters:
+        win_size_s (int): Window size in seconds.
+        """
         N_pts_win =int(win_size_s*self.fs)
         sym_fac_array = [];rms_arr = []
         x_bf = self.xx[:self.non_zero_pos]
@@ -893,6 +981,11 @@ class Lumicks_sucks():
             sym_fac_array.append(  np.sqrt(np.amax(w)/np.amin(w)))
         return sym_fac_array,rms_arr 
     def cal_rupture_angle(self):
+        """
+        Calculate the rupture angle.
+        
+        Computes the angle at a particular point and returns the angle in degrees.
+        """
         #computes the angle at a particular point, 
         #returns the angle in degrees  
         temp = np.sqrt(self.xx[self.OTR_A:self.OTR_B]**2+self.yy[self.OTR_A:self.OTR_B]**2)
@@ -903,6 +996,9 @@ class Lumicks_sucks():
         return(angle)
         
     def onButtonClicked_PSD_plt_b(self):
+        """
+        Handle the event when the PSD plot button is clicked.
+        """
         self.PSD_plt.clear()
    
         #print("updates")
@@ -940,6 +1036,9 @@ class Lumicks_sucks():
             self.bool_D_G = True
 
     def find_rup_force(self):
+        """
+        Find the rupture force.
+        """
         self.bool_troubleshoot  = True
         print("find the rup force ")
         
@@ -1018,6 +1117,9 @@ class Lumicks_sucks():
         self.rup_force =self.LDR *self.load_time
 
     def find_global(self):
+        """
+        Find the global D value.
+        """
         print("finding D_g agaim")
         if self.bool_D_G:
             self.search_DG()
@@ -1028,6 +1130,9 @@ class Lumicks_sucks():
                     self.search_DG(rl)
         self.D_G_found = self.D_global_arr[0]        
     def save_t_rup(self):
+        """
+        Save the rupture time.
+        """
         #print("save_ trup" , self.rup_pos.value())
         self.rup_pos.setPen((0,200,0))
         self.rup_pos.label.setColor((0,200,0))
@@ -1046,10 +1151,19 @@ class Lumicks_sucks():
         self.otr_win.setRegion([self.rupture_time-self.n_sec_otf,self.rupture_time])
         
     def onButtonClicked_t_rup_redo(self):
+        """
+        Handle the event when the redo rupture time button is clicked.
+        """
         self.rup_pos.setPen((0,0,200))
         self.rup_pos.label.setColor((200,0,0))
         self.rup_pos.movable = True
-    def save_sess_log_post_clean(self,do_you_want_an_excel =False):
+    def save_sess_log_post_clean(self, do_you_want_an_excel=False):
+        """
+        Save the session log after cleaning.
+
+        Parameters:
+        do_you_want_an_excel (bool): Flag to save as Excel.
+        """
         N_trouble_sess = len(self.log_trouble_sess)
         #print(N_trouble_sess,self.log_afs_df.iloc[self.i_file])
 
@@ -1106,6 +1220,9 @@ class Lumicks_sucks():
         print("save success,  " , self.file_label)
         if do_you_want_an_excel:self.log_trouble_sess.to_excel(self.save_path,sheet_name='troubleshooted')        
     def save_sess_log(self):
+        """
+        Save the session log.
+        """
         N_trouble_sess = len(self.log_trouble_sess)
         #print(N_trouble_sess,self.log_afs_df.iloc[self.i_file])
 
@@ -1164,7 +1281,15 @@ class Lumicks_sucks():
 
         print("save success,  " , self.file_label)
         self.log_trouble_sess.to_excel(self.save_path,sheet_name='troubleshooted')
-    def FitSpectrumGenNew(self,f, k, D): 
+    def FitSpectrumGenNew(self, f, k, D):
+        """
+        Generate the spectrum fit.
+
+        Parameters:
+        f (array): Frequency array.
+        k (float): Spring constant.
+        D (float): Diffusion coefficient.
+        """
         #te - exp time in seconds 
         #te = 0.0029#; fs = 59.82279832617854
         #print(te,"check the te in s read from meta data and fs : ",fs)
@@ -1178,13 +1303,40 @@ class Lumicks_sucks():
             S+= (SINCn(f,self.te,self.fs,n)/DENn(f,fc,self.fs,n)) 
         return PREF*S   # with correction 
     
-    def FitSpectrumGenDaldrop(self,f, *p):  
+    def FitSpectrumGenDaldrop(self, f, *p):
+        """
+        Generate the spectrum fit using Daldrop method.
+
+        Parameters:
+        f (array): Frequency array.
+        *p (tuple): Parameters for the fit.
+        """
         return self.FitSpectrumGenNew(f, p[0], p[1])
-    def FitSpectrum_plot_global(self,x,*p): 
+    def FitSpectrum_plot_global(self, x, *p):
+        """
+        Plot the global spectrum fit.
+
+        Parameters:
+        x (array): X values.
+        *p (tuple): Parameters for the fit.
+        """
         return p[1]/(2*np.pi**2)/( x**2 + (p[0]*p[1]/(2*np.pi*self.kBT_pN_nm))**2 )   # Sitter 2015
 
     
-    def PSD_spectrum_plotting(self,xx, p1Zo,i,label='lolol',ramp_time=None,build_time = None,plot_ax = None,display_psd = False):
+    def PSD_spectrum_plotting(self, xx, p1Zo, i, label='lolol', ramp_time=None, build_time=None, plot_ax=None, display_psd=False):
+        """
+        Plot the PSD spectrum.
+
+        Parameters:
+        xx (array): Trace array.
+        p1Zo (float): Z position.
+        i (int): Index.
+        label (str): Label for the plot.
+        ramp_time (float): Ramp time.
+        build_time (float): Build time.
+        plot_ax (Axes): Plot axis.
+        display_psd (bool): Flag to display PSD.
+        """
         display = True ; SaveGraph = True
         axis_arr = ['X','Y'];color_arr= [(255,0,0),(0,0,255)]
         friction0 = 6*np.pi*1.e-9*self.bead_radius       # units pN.s/nm
@@ -1273,7 +1425,17 @@ class Lumicks_sucks():
         
         return(temp_arr_round)
     
-    def spectrum_D_g(self,xx, p1Zo,i,label='lolol',plot_ax = None):
+    def spectrum_D_g(self, xx, p1Zo, i, label='lolol', plot_ax=None):
+        """
+        Plot the global spectrum D.
+
+        Parameters:
+        xx (array): X values.
+        p1Zo (float): Z position.
+        i (int): Index.
+        label (str): Label for the plot.
+        plot_ax (Axes): Plot axis.
+        """
         friction0 = 6*np.pi*1.e-9*self.bead_radius 
         bead_radius =self.bead_radius
         # units pN.s/nm
@@ -1331,7 +1493,13 @@ class Lumicks_sucks():
 
         temp_arr_round = [pEq, D_global, eEq[0], dl,fc, friction ,D_Dtheo]
         return(temp_arr_round)
-    def search_DG(self,ramp_loc=None):
+    def search_DG(self, ramp_loc=None):
+        """
+        Search for the global D value.
+
+        Parameters:
+        ramp_loc (tuple): Ramp location.
+        """
         d_dt_max,d_dt_min = 1.2 ,0.8
      
         if ramp_loc==None:
@@ -1410,6 +1578,9 @@ class Lumicks_sucks():
             self.D_global_arr = [False , 0,0]
             print("NOT FOUNDGlobal D ")
     def controller_cont(self):
+        """
+        Handle controller events.
+        """
     
         for event in pyg.event.get():
 
@@ -1438,6 +1609,9 @@ class Lumicks_sucks():
                 self.move_rup_pos()
 
     def find_temp(self):
+        """
+        Find the temperature from the TDMS file.
+        """
         tdms_file = TdmsFile.read_metadata(f"{self.ori_path}/{self.tdms_file_name}.tdms")  
         for group in tdms_file.groups():
             te = float(group.properties['Camera.Exposure time (ms)'])
@@ -1454,7 +1628,13 @@ class Lumicks_sucks():
         
         temp_kBT_pN_nm= 1.38e-23*(Temperature_C+273)*1.e12*1.e9
         return Temperature_C
-    def key_pressed_YS(self,ev):
+    def key_pressed_YS(self, ev):
+        """
+        Handle key press events.
+
+        Parameters:
+        ev (QEvent): Key event.
+        """
         
       
         if keys_mapping[ev.key()]=='D':
@@ -1464,4 +1644,4 @@ class Lumicks_sucks():
         elif keys_mapping[ev.key()]=='S':
             self.save_sess_log()
         elif keys_mapping[ev.key()]=='Space':
-            self.btn_skip_file()    
+            self.btn_skip_file()

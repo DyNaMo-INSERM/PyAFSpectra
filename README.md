@@ -49,14 +49,9 @@ This GUI has keyboard functionality, to have a more user friendly approch to ana
 - Press Space to skip the analysis of the current trace.
 
 
-## To Do
-- what License
-- 
-
-## References
-1. 
-2. 
 ## Acknowledgements
-This project has received funding by the ERC- Consolidator , ATIP- AVENIR?
+
+The authors would like to acknowledge all the funding sources that supported this work. 
+This project received funding from the European Research Council (ERC) under the European Union’s Horizon 2020 research and innovation programme (grant agreement number 772257 to FR) and the Marie Curie Sklodowska action (MSCA-IF) (grant agreement no. 895819 to CV), from ITMO Cancer of Aviesan on funds Cancer 2021 (ATIP Avenir to CV) and from the Agence Nationale de la Recherche (ANR AAPG2023 - PRC – XXL to MM and FR). The AFS setup was acquired thanks to the grant Projet exploratoire region PACA 2017 – AcouLeuco cofunded by the ANR (ANR-15-CE11-0007-01 to FR). We also acknowledge Inserm, CNRS, and amU for regular support.
 
 
